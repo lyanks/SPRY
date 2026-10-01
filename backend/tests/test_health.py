@@ -1,13 +1,16 @@
+import pytest
 from httpx import AsyncClient
 
 
-async def test_liveness(client: AsyncClient) -> None:
-    response = await client.get("/health")
+@pytest.mark.asyncio
+async def test_health(anon_client: AsyncClient):
+    response = await anon_client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
 
 
-async def test_readiness_reports_database(client: AsyncClient) -> None:
-    response = await client.get("/api/v1/health/ready")
+@pytest.mark.asyncio
+async def test_health_ready(anon_client: AsyncClient):
+    response = await anon_client.get("/api/health/ready")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "database": "ok"}

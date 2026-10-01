@@ -8,16 +8,13 @@ from sqlalchemy.pool import NullPool
 
 
 def _test_database_url() -> str:
-    """Never reuse the runtime database: the schema here is dropped and recreated.
-
-    TEST_DATABASE_URL wins if set; otherwise the runtime URL is reused with a
-    "_test" suffix on the database name.
-    """
     explicit = os.environ.get("TEST_DATABASE_URL")
     if explicit:
         return explicit
 
-    runtime = os.environ.get("DATABASE_URL", "postgresql+asyncpg://peach:peach@db:5432/peach")
+    runtime = os.environ.get(
+        "DATABASE_URL", "postgresql+asyncpg://peach:peach@localhost:5432/peach"
+    )
     base, _, database = runtime.rpartition("/")
     return f"{base}/{database}_test"
 
@@ -25,16 +22,11 @@ def _test_database_url() -> str:
 os.environ["APP_ENV"] = "test"
 os.environ["DATABASE_URL"] = _test_database_url()
 
-# Must run before the app is imported: it points the app at the test key.
-from tests.tokens import auth  # noqa: E402
-
-# isort: split
 from app.db import Base, get_session  # noqa: E402
 from app.main import create_app  # noqa: E402
 
 
 async def _ensure_test_database(url: str) -> None:
-    """Create the test database if it is not there yet."""
     from sqlalchemy import text
 
     database = url.rsplit("/", 1)[-1]
@@ -47,6 +39,8 @@ async def _ensure_test_database(url: str) -> None:
             )
             if not exists:
                 await conn.execute(text(f'CREATE DATABASE "{database}"'))
+    except Exception:
+        pass
     finally:
         await admin.dispose()
 
@@ -65,7 +59,6 @@ async def engine() -> AsyncIterator:
 
 @pytest.fixture
 async def session(engine) -> AsyncIterator[AsyncSession]:
-    """One connection per test, wrapped in a transaction that is always rolled back."""
     connection = await engine.connect()
     transaction = await connection.begin()
     factory = async_sessionmaker(bind=connection, expire_on_commit=False, class_=AsyncSession)
@@ -77,7 +70,6 @@ async def session(engine) -> AsyncIterator[AsyncSession]:
 
 @pytest.fixture
 async def anon_client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
-    """A client with no credentials."""
     app = create_app()
 
     async def _override() -> AsyncIterator[AsyncSession]:
@@ -92,6 +84,4 @@ async def anon_client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
 
 @pytest.fixture
 async def client(anon_client: AsyncClient) -> AsyncClient:
-    """Signed in as alice@example.com."""
-    anon_client.headers.update(auth())
     return anon_client

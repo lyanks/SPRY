@@ -1,7 +1,7 @@
-import { TaskDashboard } from "@/components/task-dashboard";
+import { MeetingList } from "@/components/meeting-list";
 
-export const metadata = { title: "Home | Peach" };
+export const metadata = { title: "Home | Spry" };
 
 export default function HomePage() {
-  return <TaskDashboard />;
+  return <MeetingList />;
 }
