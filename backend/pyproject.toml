@@ -1,8 +1,8 @@
 [project]
-name = "peach-backend"
+name = "spry-backend"
 version = "0.1.0"
-description = "Peach API"
-requires-python = ">=3.14"
+description = "Spry API"
+requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.118",
     "uvicorn[standard]>=0.37",
@@ -11,8 +11,7 @@ dependencies = [
     "alembic>=1.14",
     "pydantic>=2.10",
     "pydantic-settings>=2.7",
-    "mangum>=0.22.0",
-    "pyjwt[crypto]>=2.10",
+    "tzdata>=2024.1",
 ]
 
 [dependency-groups]
@@ -28,7 +27,7 @@ package = false
 
 [tool.ruff]
 line-length = 100
-target-version = "py314"
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]

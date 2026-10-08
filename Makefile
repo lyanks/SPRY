@@ -1,6 +1,6 @@
 COMPOSE := docker compose
 
-.PHONY: help up down build logs ps migrate revision test test-backend test-frontend lint fmt clean shell-backend shell-db deploy-cognito destroy-cognito deploy-backend destroy-backend logs-backend migrate-backend cert domain deploy-frontend destroy-frontend github-role
+.PHONY: help up down build logs ps migrate revision test test-backend test-frontend lint fmt clean shell-backend shell-db deploy-backend destroy-backend logs-backend migrate-backend cert domain deploy-frontend destroy-frontend github-role
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
@@ -49,26 +49,23 @@ shell-backend: ## Shell into the backend container
 	$(COMPOSE) exec backend bash
 
 shell-db: ## psql into the database
-	$(COMPOSE) exec db psql -U $${POSTGRES_USER:-peach} -d $${POSTGRES_DB:-peach}
+	$(COMPOSE) exec db psql -U $${POSTGRES_USER:-spry} -d $${POSTGRES_DB:-spry}
 
-deploy-cognito: ## Create/update the Cognito user pool; writes COGNITO_* to .env and prints them
-	./scripts/deploy-cognito.sh
-
-destroy-cognito: ## Delete the Cognito stack, every account in the pool included
-	./scripts/destroy-cognito.sh
-
-deploy-backend: ## Build + push the image, roll the Lambda (function URL + Aurora), migrate, write BACKEND_URL to .env
+deploy-backend: ## Build + push the image (tagged with the commit SHA), roll the ECS service; IMAGE_TAG=<sha> redeploys an old image
 	./scripts/deploy-backend.sh
 
-destroy-backend: ## Delete the backend stack, Aurora cluster included
+rollback-backend: ## Redeploy an earlier image: make rollback-backend IMAGE_TAG=<sha>
+	@test -n "$(IMAGE_TAG)" || { echo "usage: make rollback-backend IMAGE_TAG=<sha>"; exit 2; }
+	IMAGE_TAG=$(IMAGE_TAG) ./scripts/deploy-backend.sh
+
+destroy-backend: ## Delete the backend stack, database included
 	./scripts/destroy-backend.sh
 
 logs-backend: ## Tail the deployed backend's CloudWatch logs
-	aws logs tail /aws/lambda/$${PROJECT_NAME:-peach}-backend --follow --since 10m
+	aws logs tail /ecs/$${PROJECT_NAME:-spry}-backend --follow --since 10m
 
-migrate-backend: ## Re-run migrations on the deployed backend (deploy-backend already does)
-	aws lambda invoke --function-name $${PROJECT_NAME:-peach}-backend \
-		--cli-binary-format raw-in-base64-out --payload '{"action":"migrate"}' /dev/stdout
+cert-backend: ## Request + DNS-validate the API's certificate: make cert-backend API_DOMAIN=api.example.com
+	./scripts/domain-backend.sh
 
 cert: ## Request + DNS-validate a us-east-1 certificate for the frontend: make cert DOMAIN=app.example.com
 	./scripts/domain-frontend.sh cert

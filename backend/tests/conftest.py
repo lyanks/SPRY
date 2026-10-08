@@ -1,5 +1,6 @@
 import os
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -12,16 +13,18 @@ def _test_database_url() -> str:
     if explicit:
         return explicit
 
-    runtime = os.environ.get(
-        "DATABASE_URL", "postgresql+asyncpg://peach:peach@localhost:5432/peach"
-    )
+    runtime = os.environ.get("DATABASE_URL", "postgresql+asyncpg://spry:spry@localhost:5432/spry")
     base, _, database = runtime.rpartition("/")
     return f"{base}/{database}_test"
 
 
+# Wednesday 2026-10-07 09:00 in Kyiv (UTC+3), inside the week of Monday 2026-10-05.
+NOW = datetime(2026, 10, 7, 6, 0, tzinfo=UTC)
+
 os.environ["APP_ENV"] = "test"
 os.environ["DATABASE_URL"] = _test_database_url()
 
+from app.clock import get_now  # noqa: E402
 from app.db import Base, get_session  # noqa: E402
 from app.main import create_app  # noqa: E402
 
@@ -76,6 +79,7 @@ async def anon_client(session: AsyncSession) -> AsyncIterator[AsyncClient]:
         yield session
 
     app.dependency_overrides[get_session] = _override
+    app.dependency_overrides[get_now] = lambda: NOW
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

@@ -31,9 +31,9 @@ for var in AWS_PROFILE AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
   [[ -n "${!var:-}" ]] || unset "${var}"
 done
 
-PROJECT_NAME="${PROJECT_NAME:-peach}"
+PROJECT_NAME="${PROJECT_NAME:-spry}"
 STACK_NAME="${FRONTEND_STACK_NAME:-${PROJECT_NAME}-frontend}"
-AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}"
+AWS_REGION="${AWS_REGION:-${AWS_DEFAULT_REGION:-eu-central-1}}"
 export AWS_DEFAULT_REGION="${AWS_REGION}"
 
 # --- preflight --------------------------------------------------------------
@@ -63,11 +63,8 @@ API_URL="${API_URL%/}"
 
 log "building against ${API_URL}"
 
-# The Cognito ids are compiled in too; without them nobody could sign in.
-[[ -n "${COGNITO_CLIENT_ID:-}" && -n "${COGNITO_DOMAIN:-}" ]] \
-  || die "COGNITO_CLIENT_ID / COGNITO_DOMAIN are not set in .env - run make deploy-cognito first"
 
-# The function URL is always HTTPS; plain HTTP here means a hand-edited .env.
+# A plain-HTTP BACKEND_URL means the API has no certificate yet.
 [[ "${API_URL}" == https://* ]] \
   || die "BACKEND_URL must be https:// - browsers block an HTTPS page calling HTTP"
 
@@ -112,10 +109,6 @@ log "building the static export"
 rm -rf "${APP}/out"
 (cd "${APP}" && NEXT_OUTPUT=export \
   NEXT_PUBLIC_API_URL="${API_URL}" \
-  NEXT_PUBLIC_COGNITO_REGION="${COGNITO_REGION:-${AWS_REGION}}" \
-  NEXT_PUBLIC_COGNITO_CLIENT_ID="${COGNITO_CLIENT_ID}" \
-  NEXT_PUBLIC_COGNITO_DOMAIN="${COGNITO_DOMAIN}" \
-  NEXT_PUBLIC_COGNITO_GOOGLE_ENABLED="${COGNITO_GOOGLE_ENABLED:-false}" \
   "${PM[@]}" build)
 [[ -f "${APP}/out/index.html" ]] || die "the export produced no out/index.html"
 
@@ -150,15 +143,11 @@ aws cloudfront wait invalidation-completed \
 
 echo
 echo "  site       ${SITE_URL}"
-echo "  items      ${SITE_URL}/items"
+echo "  meetings   ${SITE_URL}/meetings"
 echo "  api        ${API_URL}"
 echo "  bucket     s3://${BUCKET}"
 echo
 
-echo "If this was the first frontend deploy, run make deploy-cognito again so"
-echo "Google sign-in may redirect back to ${SITE_URL}."
-echo
-echo "Now allow the site's origin through CORS:"
-echo
-echo "  API_CORS_ORIGINS=${SITE_URL}   in .env, then: make deploy-backend"
+echo "The API allows this origin automatically when APP_DOMAIN is set in .env"
+echo "(or once this stack exists): run make deploy-backend to refresh CORS."
 echo

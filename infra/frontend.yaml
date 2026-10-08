@@ -1,13 +1,13 @@
 AWSTemplateFormatVersion: "2010-09-09"
 
 Description: >-
-  Peach frontend on CloudFront: a private S3 bucket holding the Next.js static
+  Spry frontend on CloudFront: a private S3 bucket holding the Next.js static
   export, reachable only through the distribution. Deployed by
   scripts/deploy-frontend.sh, which builds the site and syncs it into the bucket.
 
   Optionally on a custom domain (make domain DOMAIN=app.example.com): the
   distribution takes the alias and an ACM certificate from us-east-1. Only the
-  frontend takes a custom domain; the API stays on its Lambda function URL.
+  frontend takes a custom domain; the API has its own domain (see infra/backend.yaml).
 
   Built to stay free: CloudFront's always-free tier covers 1 TB/month out and
   10M requests, and nothing here uses a paid extra (no WAF, logging, Lambda@Edge,
@@ -17,7 +17,7 @@ Description: >-
 Parameters:
   ProjectName:
     Type: String
-    Default: peach
+    Default: spry
 
   DefaultRootObject:
     Type: String
@@ -107,7 +107,7 @@ Resources:
         SigningBehavior: always
         SigningProtocol: sigv4
 
-  # A static export puts /items at items.html, but the browser asks for /items.
+  # A static export puts /meetings at meetings.html, but the browser asks for /meetings.
   # S3 has no notion of "try adding .html", so the rewrite happens at the edge.
   RewriteFunction:
     Type: AWS::CloudFront::Function
@@ -124,7 +124,7 @@ Resources:
           if (uri === '/') {
             request.uri = '/index.html';
           } else if (uri.endsWith('/')) {
-            // The export writes items.html, not items/index.html.
+            // The export writes meetings.html, not meetings/index.html.
             request.uri = uri.slice(0, -1) + '.html';
           } else if (!uri.split('/').pop().includes('.')) {
             request.uri = uri + '.html';

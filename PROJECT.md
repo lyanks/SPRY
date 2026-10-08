@@ -1,154 +1,92 @@
-# Spry — Project Structure
+# Spry: project specification
 
-## Repository Layout
+Spry turns a team's meetings into insights: how much time goes to meetings, how much is left for
+deep work, and which upcoming meetings have no agenda. This file describes what is in the
+repository and the contract between backend and frontend. Nothing here is aspirational: every
+endpoint listed exists and is covered by a test.
+
+## 1. Repository layout (monorepo)
 
 ```
-spry/
-├── backend/            # FastAPI application
-├── frontend/           # React + Vite application
-├── docker-compose.yml  # Local development orchestration
-└── PROJECT.md          # Project specification document
+backend/    FastAPI, SQLAlchemy 2 (async), Alembic          -> the only thing that touches the database
+  app/api/routes/    HTTP only: parse, validate, call a service, shape the response
+  app/services/      business logic; schedule.py is pure maths with no DB, HTTP or clock
+  app/models/        SQLAlchemy tables
+  app/schemas/       Pydantic request/response models (the API contract)
+  migrations/        Alembic revisions; the schema changes only through these
+  tests/             pytest against a real PostgreSQL, each test in a rolled-back transaction
+frontend/   Next.js (static export), Tailwind, shadcn/ui     -> talks to the backend over HTTP only
+  app/(app)/page.tsx      the dashboard at /: weekly numbers, week calendar, deep work, agenda readiness
+  app/(app)/meetings/     every meeting in a table, with edit and delete
+  components/             one component per card; ui/ holds the shadcn primitives
+  lib/api.ts              the only place that calls the backend; zod schemas mirror section 3
+  lib/queries.ts          React Query hooks; any change refreshes meetings, insights, slots and readiness
+  lib/time.ts             all date maths, in the working timezone (Europe/Kyiv)
+infra/      CloudFormation: ECS Fargate + ALB + RDS, S3 + CloudFront, GitHub OIDC role
+scripts/    deploy / destroy helpers behind the Makefile
+docker-compose.yml   db + backend + frontend; `docker compose up --build` is the one command
 ```
 
----
+Rule: backend and frontend share no source. The HTTP API below is their only contract.
 
-## backend/
+## 2. Data model
 
-Python 3.12 service that exposes a REST API over HTTP.
+`meetings`
 
-### Tech Stack
-* **Runtime:** `python:3.12-slim`
-* **Framework:** FastAPI `0.111.0`
-* **ORM:** SQLAlchemy `2.0.30`
-* **Migrations:** Alembic `1.13.1`
-* **Server:** Uvicorn `0.29.0`
-* **DB Driver:** psycopg2-binary `2.9.9`
+| column | type | notes |
+|---|---|---|
+| id | integer pk | |
+| title | varchar(255) | |
+| starts_at, ends_at | timestamptz | `ends_at > starts_at` is enforced by a CHECK constraint |
+| attendee_count | integer | >= 1 |
+| kind | varchar(10) | `meeting` (2+ attendees), `focus` (deep-work block), `other`; CHECK constrained |
+| agenda | text, nullable | null or blank means "no agenda" |
+| created_at, updated_at | timestamptz | |
 
-### Directory Structure
+Revisions: `0001` init, `0002` meetings table, `0003` kind / agenda / updated_at / constraints.
+
+## 3. API contract
+
+Base path `/api`. JSON. Datetimes are ISO 8601 with offset. Errors: `{"detail": ...}`.
+`GET /health` is liveness; `GET /api/health/ready` also runs `SELECT 1`.
+
+`Meeting` = `{id, title, starts_at, ends_at, attendee_count, kind, agenda, has_agenda}`
+
+| Method | Path | Body / query | Result |
+|---|---|---|---|
+| GET | `/api/meetings` | `starts_after`, `starts_before`, `kind` (all optional) | `200 Meeting[]`, oldest first |
+| POST | `/api/meetings` | `{title, starts_at, ends_at, attendee_count?, kind?, agenda?}` | `201 Meeting`. `kind` defaults to `meeting` if 2+ attendees, else `other` |
+| GET | `/api/meetings/{id}` | | `200 Meeting`, `404` |
+| PATCH | `/api/meetings/{id}` | any subset of the create fields; `agenda: null` clears it | `200 Meeting`, `404`, `422` if the merged times are inverted |
+| DELETE | `/api/meetings/{id}` | | `204`, `404` |
+| GET | `/api/insights/week` | `week_of` (any date in the week; default: this week) | `200 WeekInsights` |
+| GET | `/api/agenda/readiness` | | `200 AgendaReadiness` (next 7 days) |
+| GET | `/api/deep-work/slots` | | `200 SlotProposal` (this week and next) |
+| POST | `/api/deep-work/reserve` | `{starts_at, ends_at, title?}` | `201 Meeting` of kind `focus`; `409` if it overlaps a meeting or focus block |
+
 ```
-backend/
-├── Dockerfile
-├── requirements.txt
-├── alembic.ini
-├── alembic/
-│   └── versions/         # One migration file per schema change
-└── app/
-    ├── main.py           # FastAPI app entry point, mounts routers
-    ├── database.py       # SQLAlchemy engine + session factory
-    ├── models.py         # ORM table definitions
-    ├── schemas.py        # Pydantic request/response models
-    └── routers/
-        └── meetings.py   # GET /api/meetings, POST /api/meetings
-```
-
-### API Contract
-
-#### 1. Fetch Meetings
-* **Endpoint:** `GET /api/meetings`
-* **Response Status:** `200 OK`
-* **Response Body:**
-```json
-[
-  {
-    "id": 1,
-    "title": "Weekly sync",
-    "starts_at": "2026-10-01T10:00:00Z",
-    "ends_at": "2026-10-01T10:30:00Z",
-    "attendee_count": 5
-  }
-]
-```
-* **Notes:** All timestamps in ISO 8601 UTC. Returns an empty list `[]` if no meetings exist.
-
-#### 2. Create Meeting
-* **Endpoint:** `POST /api/meetings`
-* **Request Body:**
-```json
-{
-  "title": "Weekly sync",
-  "starts_at": "2026-10-01T10:00:00Z",
-  "ends_at": "2026-10-01T10:30:00Z",
-  "attendee_count": 5
-}
-```
-* **Response Status:** `201 Created` with the created object including `id`.
-
-### Configuration
-* **Port:** `8000`
-* **Migrations:** Alembic runs at container startup (`alembic upgrade head`), before Uvicorn starts.
-
----
-
-## frontend/
-
-Static single-page application.
-
-### Tech Stack
-* **Runtime:** `node:20-slim` (build stage only)
-* **Framework:** React `18.3.1` + Vite `5.3.1`
-* **Styling:** Tailwind CSS `3.4.4`
-* **Components:** shadcn/ui (installed via CLI at init, no version pinning)
-
-### Directory Structure
-```
-frontend/
-├── Dockerfile
-├── package.json
-├── vite.config.ts
-├── tailwind.config.ts
-├── index.html
-└── src/
-    ├── main.tsx          # React entry point
-    ├── App.tsx           # Root component, renders MeetingList
-    └── components/
-        ├── MeetingList.tsx   # Fetches GET /api/meetings, renders cards
-        └── MeetingForm.tsx   # Form → POST /api/meetings → refreshes list
+WeekInsights    {week_start, week_end, timezone,
+                 meeting_minutes, meeting_count, deep_work_minutes}   each = {value, previous, change_pct|null}
+AgendaReadiness {window_days, upcoming, without_agenda, without_agenda_pct, meetings: Meeting[]}
+SlotProposal    {slots: [{starts_at, ends_at, minutes}], total_minutes}
 ```
 
-### Configuration
-* **Port:** `5173` (Vite dev server in local development)
-* **API Calls:** Frontend calls the backend at `VITE_API_URL` (env var). In local dev: `http://localhost:8000`.
+Definitions (all in `backend/app/services/schedule.py`, all tested):
 
----
+- Only `kind = meeting` counts as meeting time. A meeting belongs to the ISO week it starts in.
+- Working week: Monday to Friday, 09:00 to 18:00, `Europe/Kyiv` (settings `WORK_TIMEZONE`, `WORK_START_HOUR`, `WORK_END_HOUR`).
+- Deep work: contiguous free time of at least 60 minutes inside working hours.
+- Proposed slots: free gaps of at least 120 minutes that start no earlier than now. Both meetings and focus blocks count as busy.
+- `change_pct` compares with the previous week and is `null` when the previous value is 0.
 
-## docker-compose.yml
+## 4. Configuration
 
-Orchestrates local development for all three services. Run with: `docker compose up --build`.
+Environment variables only (`backend/app/config.py`, template in `.env.example`):
+`DATABASE_URL`, `APP_ENV`, `LOG_LEVEL`, `CORS_ORIGINS`, `WORK_TIMEZONE`, `WORK_START_HOUR`,
+`WORK_END_HOUR`, `DEEP_WORK_MIN_MINUTES`, `DEEP_WORK_BLOCK_MINUTES`.
 
-### Service Matrix
+## 5. Not built yet
 
-| Service | Image / Build | Port | Depends On |
-| :--- | :--- | :--- | :--- |
-| `postgres` | `postgres:16` | `5432` | — |
-| `backend` | build `./backend` | `8000` | `postgres` (healthy) |
-| `frontend` | build `./frontend` | `5173` | `backend` |
-
-### Startup Order
-1. `postgres` starts and exposes port `5432`.
-2. A `healthcheck` pings `pg_isready` every 5 seconds (up to 30 seconds). Until it passes, the service status is `unhealthy`.
-3. `backend` uses `depends_on: postgres: condition: service_healthy` — it will not start until Postgres answers.
-4. `backend` entrypoint runs `alembic upgrade head`, then `uvicorn app.main:app --host 0.0.0.0 --port 8000`.
-5. `frontend` starts after `backend` (soft dependency — Vite starts regardless, but the API must be reachable for data to load).
-
-### Environment Variables
-
-**Backend:**
-```env
-DATABASE_URL=postgresql://spry:spry@postgres:5432/spry
-```
-
-**Frontend:**
-```env
-VITE_API_URL=http://localhost:8000
-```
-
----
-
-## What is NOT in this Repository
-
-* No Redis, no Celery, no message queue
-* No Nginx reverse proxy
-* No Kubernetes manifests
-* No second database
-* No authentication (added in a later lab)
-
+Authentication and organisations (FR-1 to FR-4), real Google Calendar sync (FR-5, FR-6), email
+(FR-21, FR-22), CSV export and audit log (FR-23, FR-25), per-member working hours (FR-8). Every
+meeting today is entered by hand or created through the API.

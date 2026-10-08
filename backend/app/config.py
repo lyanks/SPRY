@@ -10,13 +10,12 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    app_name: str = "Peach API"
+    app_name: str = "Spry API"
     app_env: Literal["development", "test", "production"] = "development"
     log_level: str = "info"
 
-    database_url: str = "postgresql+asyncpg://peach:peach@db:5432/peach"
-    # Off on Lambda: a warm but idle execution environment would otherwise hold
-    # pooled connections open, and Aurora Serverless only pauses at zero.
+    database_url: str = "postgresql+asyncpg://spry:spry@db:5432/spry"
+    # Connection pooling. Leave on for the long-running ECS container.
     db_pooling: bool = True
     # NoDecode keeps pydantic-settings from JSON-parsing the env value, so the
     # validator below can accept the comma-separated form Compose passes.
@@ -24,14 +23,15 @@ class Settings(BaseSettings):
         default_factory=lambda: ["http://localhost:3000"]
     )
 
-    # Cognito. With no user pool configured every protected endpoint answers
-    # 503, so a missing setting can never leave the API open.
-    cognito_region: str = "us-east-1"
-    cognito_user_pool_id: str = ""
-    cognito_client_id: str = ""
-    # The pool's public keys as JSON. Set on Lambda, which has no route to fetch
-    # them; left empty elsewhere, and they are downloaded from the issuer.
-    cognito_jwks: str = ""
+    # Working week used by the insights (FR-8). One shared setting until
+    # members have their own profile.
+    work_timezone: str = "Europe/Kyiv"
+    work_start_hour: int = 9
+    work_end_hour: int = 18
+    # Contiguous free time shorter than this is not "deep work" (FR-9).
+    deep_work_min_minutes: int = 60
+    # Smallest block Spry proposes to reserve (FR-14).
+    deep_work_block_minutes: int = 120
 
     @field_validator("cors_origins", mode="before")
     @classmethod
@@ -40,16 +40,6 @@ class Settings(BaseSettings):
         if isinstance(value, str):
             return [origin.strip() for origin in value.split(",") if origin.strip()]
         return value
-
-    @property
-    def cognito_issuer(self) -> str:
-        return (
-            f"https://cognito-idp.{self.cognito_region}.amazonaws.com/{self.cognito_user_pool_id}"
-        )
-
-    @property
-    def auth_configured(self) -> bool:
-        return bool(self.cognito_user_pool_id and self.cognito_client_id)
 
     @property
     def is_development(self) -> bool:
