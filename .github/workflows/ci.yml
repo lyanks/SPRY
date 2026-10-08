@@ -140,3 +140,8 @@ jobs:
             --stack-name "${PROJECT_NAME}-backend" \
             --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" --output text)"
           make deploy-frontend
+
+      # The very first run has no frontend yet when the backend deploys, so the
+      # API did not know which origin to allow. Idempotent: a no-op afterwards.
+      - name: Refresh API CORS for the frontend origin
+        run: make deploy-backend
