@@ -64,6 +64,15 @@ destroy-backend: ## Delete the backend stack, database included
 logs-backend: ## Tail the deployed backend's CloudWatch logs
 	aws logs tail /ecs/$${PROJECT_NAME:-spry}-backend --follow --since 10m
 
+deploy-reports: ## Lab 3: build the Lambda image and deploy the weekly-report stack (needs REPORT_EMAIL in .env)
+	./scripts/reports.sh deploy
+
+report-now: ## Lab 3: build a report on demand: make report-now WEEK=2026-W41 (default: last week)
+	./scripts/reports.sh now $(WEEK)
+
+destroy-reports: ## Lab 3: delete the weekly-report stack
+	./scripts/reports.sh destroy
+
 cert-backend: ## Request + DNS-validate the API's certificate: make cert-backend API_DOMAIN=api.example.com
 	./scripts/domain-backend.sh
 
