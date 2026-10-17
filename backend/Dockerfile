@@ -74,4 +74,9 @@ RUN --mount=from=ghcr.io/astral-sh/uv:0.11.32,source=/uv,target=/bin/uv \
 
 COPY app ${LAMBDA_TASK_ROOT}/app
 
+# Lambda runs the function as an unprivileged user. Docker keeps the file modes
+# of the build context, so a folder that is 700 on the developer's machine would
+# be unreadable there and the import fails with "No module named ...".
+RUN chmod -R a+rX "${LAMBDA_TASK_ROOT}"
+
 CMD ["app.reports.lambda_handler.handler"]
