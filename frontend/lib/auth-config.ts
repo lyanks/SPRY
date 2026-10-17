@@ -45,3 +45,28 @@ export function buildLogoutUrl(
   });
   return `${domain}/logout?${params.toString()}`;
 }
+
+/**
+ * The access token of whoever is signed in, or null. oidc-client-ts keeps the
+ * signed-in user in sessionStorage under this key and rewrites it when it
+ * renews the token, so reading it here is always current and works before React
+ * has finished rendering (a query can fire the moment a page mounts).
+ */
+export function readAccessToken(): string | null {
+  if (!authEnabled || typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(
+      `oidc.user:${authority}:${clientId}`,
+    );
+    if (!raw) return null;
+    const user = JSON.parse(raw) as {
+      access_token?: string;
+      expires_at?: number;
+    };
+    if (!user.access_token) return null;
+    if (user.expires_at && user.expires_at * 1000 < Date.now()) return null;
+    return user.access_token;
+  } catch {
+    return null;
+  }
+}

@@ -53,20 +53,27 @@ async def test_report_counts_only_meetings_of_that_week(session):
     session.add_all(
         [
             Meeting(
+                owner_id="u1",
                 title="in week",
                 starts_at=monday,
                 ends_at=monday + timedelta(hours=2),
                 attendee_count=4,
             ),
             Meeting(
-                title="focus", starts_at=monday, ends_at=monday + timedelta(hours=3), kind="focus"
+                owner_id="u1",
+                title="focus",
+                starts_at=monday,
+                ends_at=monday + timedelta(hours=3),
+                kind="focus",
             ),
             Meeting(
+                owner_id="u1",
                 title="last week",
                 starts_at=monday - timedelta(days=7),
                 ends_at=monday - timedelta(days=7) + timedelta(hours=1),
             ),
             Meeting(
+                owner_id="u1",
                 title="next week",
                 starts_at=monday + timedelta(days=7),
                 ends_at=monday + timedelta(days=7, hours=1),

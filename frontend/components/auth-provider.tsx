@@ -1,8 +1,9 @@
 "use client";
 
-import { AuthProvider as OidcProvider } from "react-oidc-context";
+import { AuthProvider as OidcProvider, useAuth } from "react-oidc-context";
 
 import { authEnabled, buildOidcSettings } from "@/lib/auth-config";
+import { SessionContext, type SessionStatus } from "@/lib/session";
 
 /** Wraps the app in the OIDC provider, or does nothing when sign-in is not configured. */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -24,7 +25,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }}
     >
-      {children}
+      <Session>{children}</Session>
     </OidcProvider>
+  );
+}
+
+function Session({ children }: { children: React.ReactNode }) {
+  const auth = useAuth();
+  const status: SessionStatus = auth.isLoading
+    ? "loading"
+    : auth.isAuthenticated
+      ? "user"
+      : "guest";
+  return (
+    <SessionContext.Provider value={status}>{children}</SessionContext.Provider>
   );
 }

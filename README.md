@@ -87,8 +87,29 @@ signed-in email. Without the Cognito stack the site builds and runs as before.
    (creates `infra/auth.yaml`: user pool, Google provider, public app client, domain,
    managed-login branding), then `make deploy-frontend` again - it reads the stack's
    outputs and compiles them into the build.
-3. Open `<site>/login/`. Try it in a private window, once with an email and password
+3. `make deploy-backend` once more: it reads the auth stack and tells the API which
+   Cognito pool and app client to trust. Until then the API answers calendar requests
+   with 401/503 - it fails closed.
+4. Open `<site>/login/`. Try it in a private window, once with an email and password
    (Cognito mails a confirmation code) and once with **Continue with Google**.
 
 `make destroy-auth` removes the stack and its users.
+
+### Who sees what
+
+- **Not signed in:** the front page is a landing page with a read-only *sample week*
+  (made-up meetings built in the browser, nothing from the API). `/meetings` asks you
+  to sign in. Nothing can be edited.
+- **Signed in:** your own calendar. The API verifies the Cognito access token on every
+  `/api/meetings`, `/api/insights`, `/api/agenda` and `/api/deep-work` call (signature,
+  issuer, expiry, `token_use=access`, app client) and stores the token's `sub` as the
+  meeting's `owner_id`. Every query filters on it, so another person's meeting is simply
+  "not found" (404) - you cannot read, edit or delete it, and it never counts in your
+  numbers or blocks your deep-work slots.
+- `/health` stays public. The weekly report (Lab 3) still covers all meetings.
+- Meetings created before accounts existed get `owner_id = 'unclaimed'` (migration 0004)
+  and are shown to nobody.
+- Local `docker compose up` has no Cognito: in development the API treats everyone as
+  one `dev-user`, so the app works as before. In production, an API with no Cognito
+  configured refuses requests (503).
 
