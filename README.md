@@ -67,3 +67,28 @@ deploys the backend and then the frontend (`.github/workflows/ci.yml`). Pull req
 Rollback: `make rollback-backend IMAGE_TAG=<older commit sha>` (the image is still in ECR).
 Logs: `make logs-backend`. Cost control: `make destroy-frontend destroy-backend` when you're done —
 the RDS instance and the ALB bill by the hour.
+
+## Sign-in with Cognito (Lab 4)
+
+People sign in with an email and a password or with Google. The browser talks
+only to Amazon Cognito (managed login); Cognito talks to Google. The site is
+still a static export: `react-oidc-context` starts the login at `/login/`,
+Cognito returns the browser to `/auth/callback`, and the header shows the
+signed-in email. Without the Cognito stack the site builds and runs as before.
+
+1. **Google OAuth client** (Google Cloud console, a project of your own):
+   - Google Auth Platform -> Branding / Audience: user type **External**, scopes
+     `openid`, `email`, `profile` only, then **Publish app** (status "In production").
+     In "Testing" only listed test users can sign in.
+   - Clients -> Create client -> **Web application**. `make auth-uris` prints the
+     two values it needs (they point at Cognito, not at the site).
+   - Put the client ID and secret in `.env` as `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`.
+2. `make deploy-frontend` (once, so the site's URL exists), then `make deploy-auth`
+   (creates `infra/auth.yaml`: user pool, Google provider, public app client, domain,
+   managed-login branding), then `make deploy-frontend` again - it reads the stack's
+   outputs and compiles them into the build.
+3. Open `<site>/login/`. Try it in a private window, once with an email and password
+   (Cognito mails a confirmation code) and once with **Continue with Google**.
+
+`make destroy-auth` removes the stack and its users.
+

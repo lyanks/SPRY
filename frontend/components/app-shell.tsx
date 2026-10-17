@@ -4,6 +4,7 @@ import { CalendarDays, LayoutDashboard } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { UserMenu } from "@/components/user-menu";
 import { cn } from "@/lib/utils";
 
 const links = [
@@ -48,7 +49,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           })}
         </nav>
       </aside>
-      <main className="min-w-0 flex-1">{children}</main>
+      <main className="min-w-0 flex-1">
+        <header className="mb-3 flex min-h-8 justify-end">
+          <UserMenu />
+        </header>
+        {children}
+      </main>
     </div>
   );
 }
